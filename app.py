@@ -225,7 +225,12 @@ if menu == "Upload & Prediksi":
             scaled_input = scaler.transform(input_df) if scaler else input_df
 
             model = st.session_state.get('model')
-            rr_prediksi = model.predict(scaled_input)[0] if model else 0.2
+            if model and hasattr(model, 'predict'):
+                rr_prediksi = model.predict(scaled_input)[0]
+            else:
+                st.error("⚠️ Model belum dilatih. Silakan upload data dulu di tab 'Upload & Prediksi'.")
+                st.stop()
+
 
             q3_default = 0.5
             def klasifikasi_manual(rr):
@@ -248,13 +253,13 @@ if menu == "Upload & Prediksi":
             st.success(f"💧 **Hasil Prediksi Curah Hujan**: {rr_prediksi:.2f} mm")
             st.info(f"🌈 **Kategori**: {emoji_kategori[kategori]} {kategori}")
 
-            if RR_AKTUAL > 0:
-                st.markdown("### 📊 Grafik Prediksi vs Aktual")
-                fig_manual, ax_manual = plt.subplots()
-                ax_manual.bar(['Aktual', 'Prediksi'], [RR_AKTUAL, rr_prediksi], color=['blue', 'orange'])
-                ax_manual.set_ylabel("Curah Hujan (RR)")
-                ax_manual.set_title("Perbandingan Curah Hujan")
-                st.pyplot(fig_manual)
+            #if RR_AKTUAL > 0:
+                #st.markdown("### 📊 Grafik Prediksi vs Aktual")
+                #fig_manual, ax_manual = plt.subplots()
+                #ax_manual.bar(['Aktual', 'Prediksi'], [RR_AKTUAL, rr_prediksi], color=['blue', 'orange'])
+                #ax_manual.set_ylabel("Curah Hujan (RR)")
+                #ax_manual.set_title("Perbandingan Curah Hujan")
+                #st.pyplot(fig_manual)
 
 
 # ==================== Menu: Analisis Prediksi ====================
