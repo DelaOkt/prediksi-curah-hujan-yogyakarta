@@ -59,11 +59,15 @@ def klasifikasi_hujan(rr, q3):
     
 @st.cache_resource
 def load_default_model():
-    # Dummy data dan model default
+    # Dummy dataset lebih besar nilainya
     dummy_data = pd.DataFrame({
-        'TN': [0.3], 'TX': [0.7], 'TAVG': [0.5], 'RH_AVG': [0.6], 'FF_X': [0.2]
+        'TN': [20, 22, 25],
+        'TX': [28, 30, 32],
+        'TAVG': [24, 26, 27],
+        'RH_AVG': [70, 75, 80],
+        'FF_X': [5, 6, 7]
     })
-    dummy_target = [0.3]
+    dummy_target = [2, 10, 20]  # nilai RR besar dan bervariasi
 
     scaler = MinMaxScaler()
     scaler.fit(dummy_data)
@@ -72,6 +76,7 @@ def load_default_model():
     model.fit(scaler.transform(dummy_data), dummy_target)
 
     return model, scaler
+
 
 # === Inisialisasi model default ===
 if "model" not in st.session_state or "scaler" not in st.session_state:
@@ -107,16 +112,17 @@ if menu == "Beranda":
     """, unsafe_allow_html=True)
 
     st.markdown("## 🎯 Evaluasi Performa Model")
-    st.markdown("Berikut hasil pengujian model terhadap data curah hujan:")
+    st.markdown("### 🔧 Evaluasi XGBoost Default")
+    col1, col2, col3 = st.columns(3)
+    col1.metric("💥 RMSE", "0.0832")
+    col2.metric("📉 MAPE", "57.81%")
+    col3.metric("📈 R² Score", "0.8097")
 
-    with st.container():
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("💥 RMSE", "0.0832", "- Lebih rendah = lebih baik")
-        with col2:
-            st.metric("📉 MAPE", "57.81%", "⚠️ Masih tinggi")
-        with col3:
-            st.metric("📈 R² Score", "0.8097", "+ Model sudah cukup baik")
+    st.markdown("### 🔧 Evaluasi XGBoost Tuning")
+    col4, col5, col6 = st.columns(3)
+    col4.metric("💥 RMSE", "0.0937")
+    col5.metric("📉 MAPE", "24.57%")
+    col6.metric("📈 R² Score", "0.7586")
 
     st.markdown("---")
 
@@ -148,6 +154,7 @@ if menu == "Upload & Prediksi":
 
     if mode_input == "Upload File":
         st.subheader("📂 Upload File Cuaca (.xlsx atau .csv)")
+        st.markdown("File yang di upload harus terdapat kolom TN, TX, TAVG, RH_AVG, RR, FF_X, dan FF_AVG")
         uploaded_file = st.file_uploader("Upload file", type=['xlsx', 'csv'])
 
         if uploaded_file:
@@ -168,9 +175,24 @@ if menu == "Upload & Prediksi":
             X_test = test[fitur]
             y_test = test[target]
 
-            model = XGBRegressor(random_state=42)
-            model.fit(X_train, y_train)
-            y_pred = model.predict(X_test)
+            from sklearn.model_selection import GridSearchCV
+
+            # Parameter tuning yang kamu pakai sebelumnya
+            param_grid = {
+                'n_estimators': [100, 200],
+                'max_depth': [3, 5, 7],
+                'learning_rate': [0.01, 0.1, 0.3]
+            }
+
+            xgb = XGBRegressor(random_state=42, objective='reg:squarederror')
+            grid = GridSearchCV(estimator=xgb, param_grid=param_grid, cv=3, scoring='r2', n_jobs=-1)
+            with st.spinner("🔄 Melatih model dengan XGBoost Tuning..."):
+                grid.fit(X_train, y_train)
+                y_pred = grid.predict(X_test)
+
+            # Simpan model ke session_state
+            st.session_state.model = grid.best_estimator_
+
 
             q3_rr = y_test.quantile(0.75)
 
@@ -185,7 +207,6 @@ if menu == "Upload & Prediksi":
             st.dataframe(hasil_df)
 
             st.session_state.hasil_df = hasil_df
-            st.session_state.model = model
             st.session_state.scaler = scaler
 
             st.markdown("### 📥 Unduh Hasil Prediksi & Kategori")
@@ -205,61 +226,61 @@ if menu == "Upload & Prediksi":
         with st.form(key='manual_form'):
             col1, col2 = st.columns(2)
             with col1:
+                tanggal_input = st.date_input("Tanggal Prediksi", value=pd.to_datetime("today"))
                 TN = st.number_input("Suhu Minimum (TN)", value=0.0)
                 TX = st.number_input("Suhu Maksimum (TX)", value=0.0)
                 TAVG = st.number_input("Suhu Rata-rata (TAVG)", value=0.0)
-                RH_AVG = st.number_input("Kelembaban Rata-rata (RH_AVG)", value=0.0)
             with col2:
+                RH_AVG = st.number_input("Kelembaban Rata-rata (RH_AVG)", value=0.0)
                 FF_X = st.number_input("Kecepatan Angin Maksimum (FF_X)", value=0.0)
                 RR_AKTUAL = st.number_input("RR Aktual (Opsional)", value=0.0)
 
             submit_btn = st.form_submit_button(label='Prediksi')
 
         if submit_btn:
-            input_df = pd.DataFrame.from_dict({
-                'TN': [TN], 'TX': [TX], 'TAVG': [TAVG],
-                'RH_AVG': [RH_AVG], 'FF_X': [FF_X]
-            })
-
-            scaler = st.session_state.get('scaler')
-            scaled_input = scaler.transform(input_df) if scaler else input_df
-
-            model = st.session_state.get('model')
-            if model and hasattr(model, 'predict'):
-                rr_prediksi = model.predict(scaled_input)[0]
+            if TN == 0.0 or TX == 0.0 or TAVG == 0.0 or RH_AVG == 0.0 or FF_X == 0.0:
+                st.error("⚠️ Semua input harus diisi dengan nilai yang valid sebelum melakukan prediksi.")
             else:
-                st.error("⚠️ Model belum dilatih. Silakan upload data dulu di tab 'Upload & Prediksi'.")
-                st.stop()
+                input_df = pd.DataFrame({
+                    'TN': [TN],
+                    'TX': [TX],
+                    'TAVG': [TAVG],
+                    'RH_AVG': [RH_AVG],
+                    'FF_X': [FF_X]
+                })
 
+                scaler = st.session_state.get('scaler')
+                model = st.session_state.get('model')
 
-            q3_default = 0.5
-            def klasifikasi_manual(rr):
-                if rr == 0:
-                    return "Cerah"
-                elif rr <= 0.2 * q3_default:
-                    return "Ringan"
-                elif rr <= 0.5 * q3_default:
-                    return "Sedang"
-                elif rr <= q3_default:
-                    return "Lebat"
+                if model and hasattr(model, 'predict'):
+                    scaled_input = scaler.transform(input_df) if scaler else input_df
+                    rr_prediksi = model.predict(scaled_input)[0]
+
+                    q3_default = 0.5
+                    def klasifikasi_manual(rr):
+                        if rr == 0:
+                            return "Cerah"
+                        elif rr <= 0.2 * q3_default:
+                            return "Ringan"
+                        elif rr <= 0.5 * q3_default:
+                            return "Sedang"
+                        elif rr <= q3_default:
+                            return "Lebat"
+                        else:
+                            return "Ekstrem"
+
+                    kategori = klasifikasi_manual(rr_prediksi)
+                    emoji_kategori = {
+                        'Cerah': '☀️', 'Ringan': '🌤️', 'Sedang': '🌦️',
+                        'Lebat': '🌧️', 'Ekstrem': '⛈️'
+                    }
+
+                    st.success(f"💧 **Hasil Prediksi Curah Hujan**: {rr_prediksi:.2f} mm")
+                    st.info(f"🌈 **Kategori**: {emoji_kategori[kategori]} {kategori}")
+                    st.markdown(f"📅 **Tanggal Prediksi**: {tanggal_input.strftime('%d %B %Y')}")
                 else:
-                    return "Ekstrem"
+                    st.error("⚠️ Model belum dilatih. Silakan upload data terlebih dahulu.")
 
-            kategori = klasifikasi_manual(rr_prediksi)
-            emoji_kategori = {
-                'Cerah': '☀️', 'Ringan': '🌤️', 'Sedang': '🌦️', 'Lebat': '🌧️', 'Ekstrem': '⛈️'
-            }
-
-            st.success(f"💧 **Hasil Prediksi Curah Hujan**: {rr_prediksi:.2f} mm")
-            st.info(f"🌈 **Kategori**: {emoji_kategori[kategori]} {kategori}")
-
-            #if RR_AKTUAL > 0:
-                #st.markdown("### 📊 Grafik Prediksi vs Aktual")
-                #fig_manual, ax_manual = plt.subplots()
-                #ax_manual.bar(['Aktual', 'Prediksi'], [RR_AKTUAL, rr_prediksi], color=['blue', 'orange'])
-                #ax_manual.set_ylabel("Curah Hujan (RR)")
-                #ax_manual.set_title("Perbandingan Curah Hujan")
-                #st.pyplot(fig_manual)
 
 
 # ==================== Menu: Analisis Prediksi ====================
@@ -298,117 +319,7 @@ elif menu == "Analisis Prediksi":
         ax1.grid(True)
         st.pyplot(fig1)
 
-        # === Tambahan Analisis Ekstrem per Tahun ===
-        st.markdown("### 🌪️ Analisis Ekstrem per Tahun (Aktual vs Prediksi)")
         
-        threshold_ekstrem = hasil_df['RR_AKTUAL'].quantile(0.75)
-
-        df_ekstrem = hasil_df.copy()
-        df_ekstrem['TAHUN'] = pd.to_datetime(df_ekstrem['TANGGAL']).dt.year
-        df_ekstrem['IS_EKSTREM_PRED'] = df_ekstrem['RR_PREDIKSI'] > threshold_ekstrem
-        df_ekstrem['IS_EKSTREM_AKTUAL'] = df_ekstrem['RR_AKTUAL'] > threshold_ekstrem
-
-        ekstrem_tahunan = df_ekstrem.groupby('TAHUN')[['IS_EKSTREM_PRED', 'IS_EKSTREM_AKTUAL']].sum().astype(int)
-        ekstrem_tahunan.columns = ['Prediksi Ekstrem', 'Aktual Ekstrem']
-
-        st.dataframe(ekstrem_tahunan)
-
-        st.markdown("### 📊 Grafik Jumlah Kejadian Cuaca Ekstrem per Tahun")
-
-        fig6, ax6 = plt.subplots(figsize=(8, 5))
-        ekstrem_tahunan.plot(
-            kind='bar',
-            ax=ax6,
-            color=['orange', 'dodgerblue']
-        )
-        ax6.set_title('📊 Ekstrem per Tahun: Prediksi vs Aktual')
-        ax6.set_xlabel('Tahun')
-        ax6.set_ylabel('Jumlah Kejadian Ekstrem')
-        ax6.grid(axis='y', linestyle='--', alpha=0.7)
-        ax6.legend(loc='upper right')
-        st.pyplot(fig6)
-
-        st.markdown("### 📊 Grafik Batang Prediksi")
-        fig2, ax2 = plt.subplots(figsize=(10, 5))
-        ax2.bar(hasil_df['LABEL'], hasil_df['RR_PREDIKSI'], color='skyblue')
-        ax2.set_xlabel("Waktu")
-        ax2.set_ylabel("Curah Hujan (RR)")
-        ax2.set_title("Curah Hujan Prediksi")
-        ax2.set_xticks(xticks)
-        ax2.tick_params(axis='x', rotation=45)
-        ax2.grid(True)
-        st.pyplot(fig2)
-
-        st.markdown("### 🌈 Kategori Hujan")
-        kategori_warna = {
-            '☀️ Cerah': 'lightgray',
-            '🌤️  Ringan': 'lightblue',
-            '🌦️ Sedang': 'dodgerblue',
-            '🌧️ Lebat': 'orange',
-            '⛈️ Ekstrem': 'red'
-        }
-
-        # ✅ Perbaikan mapping color agar aman dari error NaN
-        colors = hasil_df['KATEGORI'].map(kategori_warna).fillna('gray')
-
-        fig3, ax3 = plt.subplots(figsize=(10, 5))
-        ax3.bar(hasil_df['LABEL'], hasil_df['RR_PREDIKSI'], color=colors)
-        ax3.set_xlabel("Waktu")
-        ax3.set_ylabel("Curah Hujan (RR)")
-        ax3.set_title("Kategori Hujan berdasarkan Prediksi")
-        ax3.set_xticks(xticks)
-        ax3.tick_params(axis='x', rotation=45)
-        ax3.grid(True)
-        st.pyplot(fig3)
-
-        st.markdown("### ✨ Interaktif: Prediksi Curah Hujan")
-        hasil_df_reset = hasil_df.reset_index()
-        fig4 = px.bar(
-            hasil_df_reset,
-            x='LABEL',
-            y='RR_PREDIKSI',
-            color='KATEGORI',
-            color_discrete_map=kategori_warna,
-            hover_data=['KATEGORI', 'RR_PREDIKSI'],
-            labels={'LABEL': 'Waktu', 'RR_PREDIKSI': 'Curah Hujan (RR)'},
-            title='Prediksi Curah Hujan Interaktif'
-        )
-        fig4.update_layout(xaxis_tickangle=-45)
-        st.plotly_chart(fig4, use_container_width=True)
-
-        st.markdown("### 🧊 Heatmap Pola Curah Hujan")
-        hasil_df['DT'] = pd.to_datetime(hasil_df['TANGGAL'], errors='coerce')
-
-        if heatmap_mode == 'Bulanan':
-            hasil_df['Tahun'] = hasil_df['DT'].dt.year
-            hasil_df['Bulan'] = hasil_df['DT'].dt.strftime('%b')
-            df_heatmap = hasil_df.dropna(subset=['Tahun', 'Bulan'])
-            df_heatmap = df_heatmap.groupby(['Tahun', 'Bulan'])['RR_PREDIKSI'].mean().reset_index()
-            pivot = df_heatmap.pivot(index='Tahun', columns='Bulan', values='RR_PREDIKSI')
-            pivot = pivot.reindex(columns=['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-                                           'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'])
-            fig5, ax5 = plt.subplots(figsize=(10, 4))
-            sns.heatmap(pivot, annot=True, cmap='YlGnBu', fmt=".2f", ax=ax5, linewidths=0.5, linecolor='white')
-            ax5.set_title(f"Heatmap Curah Hujan ({heatmap_mode})")
-            st.pyplot(fig5)
-
-        else:
-            hasil_df['Hari'] = hasil_df['DT'].dt.day
-            hasil_df['Bulan'] = hasil_df['DT'].dt.strftime('%b')
-            df_heatmap = hasil_df.dropna(subset=['Hari', 'Bulan'])
-            df_heatmap = df_heatmap.groupby(['Hari', 'Bulan'])['RR_PREDIKSI'].mean().reset_index()
-            pivot = df_heatmap.pivot(index='Hari', columns='Bulan', values='RR_PREDIKSI')
-            pivot = pivot.reindex(columns=['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-                                           'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'])
-            pivot = pivot.sort_index(ascending=True)
-            fig5, ax5 = plt.subplots(figsize=(12, 6))
-            sns.heatmap(pivot, annot=True, fmt=".2f", cmap='YlGnBu', linewidths=0.3, linecolor='gray', cbar_kws={'label': 'RR Prediksi'}, ax=ax5)
-            ax5.set_title(f"Heatmap Curah Hujan ({heatmap_mode})")
-            ax5.set_ylabel("Hari")
-            ax5.set_xlabel("Bulan")
-            st.pyplot(fig5)
-
-
     else:
         st.warning("⚠️ Silakan upload dan prediksi dulu di menu 'Upload & Prediksi'")
         
