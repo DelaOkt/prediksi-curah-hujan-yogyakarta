@@ -132,7 +132,7 @@ if menu == "Beranda":
     <ul style="font-size: 1.1rem; margin-left: -1rem;">
         <li>📂 <strong>Upload file</strong> cuaca (CSV/Excel) atau input manual</li>
         <li>🔄 <strong>Preprocessing otomatis</strong> & scaling data</li>
-        <li>⚙️ <strong>Prediksi curah hujan</strong> dengan algoritma <code>XGBoost</code></li>
+        <li>⚙️ <strong>Prediksi curah hujan</strong> dengan algoritma XGBoost</li>
         <li>🌈 <strong>Klasifikasi</strong> kategori hujan: Cerah, Ringan, Sedang, Lebat, Ekstrem</li>
         <li>📊 <strong>Visualisasi interaktif</strong>: grafik, batang, heatmap, hingga download hasil</li>
     </ul>
