@@ -134,7 +134,7 @@ if menu == "Beranda":
         <li>🔄 <strong>Preprocessing otomatis</strong> & scaling data</li>
         <li>⚙️ <strong>Prediksi curah hujan</strong> dengan algoritma XGBoost</li>
         <li>🌈 <strong>Klasifikasi</strong> kategori hujan: Cerah, Ringan, Sedang, Lebat, Ekstrem</li>
-        <li>📊 <strong>Visualisasi interaktif</strong>: grafik, batang, heatmap, hingga download hasil</li>
+        <li>📊 <strong>Visualisasi interaktif</strong>: grafik dan download hasil</li>
     </ul>
     <p style="margin-top: 10px;">🔎 Prediksi berdasarkan suhu, kelembaban, angin, dan curah hujan historis.</p>
 </div>
